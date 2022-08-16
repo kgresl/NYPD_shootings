@@ -1,0 +1,174 @@
+---
+title: "NYPD Shooting Incident Analysis"
+date: "2022-07-28"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# NYPD Shooting Incident Data
+
+Source: <https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic>
+
+## Importing Data
+
+```{r import, echo=TRUE}
+library(tidyverse)
+library(lubridate)
+url <- 'https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD'
+main_data <- read_csv(url[1])
+```
+
+## Tidying and Transforming Data
+
+The NYPD Shooting Incident data file has a large amount of missing information pertaining to the perpetrator as well as information not needed for this analysis. This analysis will focus on the number of shootings and the date they occurred, therefore, all but the following information will be removed: OCCUR_DATE and BORO. Additionally, OCCUR_DATE will be changed to 'Date' and 'Date' will be changed into date(d-m-y) format.
+
+```{r, echo = TRUE}
+main_data <- main_data %>%
+  select(c(OCCUR_DATE, BORO)) %>%
+  rename(Date = 'OCCUR_DATE') %>%
+  mutate(Date = mdy(Date))
+```
+
+
+```{r, echo = TRUE}
+main_data <- main_data %>%
+  count(Date, BORO) %>%
+  rename(Shootings_Per_Day = 'n') %>%
+  pivot_wider(names_from = BORO, values_from = Shootings_Per_Day) %>%
+  dplyr::mutate(BRONX = replace_na(BRONX, 0)) %>%
+  dplyr::mutate(BROOKLYN = replace_na(BROOKLYN, 0)) %>%
+  dplyr::mutate(MANHATTAN = replace_na(MANHATTAN, 0)) %>%
+  dplyr::mutate(QUEENS = replace_na(QUEENS, 0)) %>%
+  rename(STATEN_ISLAND = 'STATEN ISLAND') %>%
+  dplyr::mutate(STATEN_ISLAND = replace_na(STATEN_ISLAND, 0))
+  
+
+```
+
+```{r, echo = TRUE}
+data2 <- main_data
+```
+Transforming data to have total number of shootings per month for each borough
+```{r, echo = TRUE}
+data2 <- data2 %>% 
+  mutate(month=format(Date, "%m"), year = format(Date, "%Y")) %>%
+  group_by(year, month) %>%
+  summarise(total_month_Bronx = sum(BRONX), total_month_Brooklyn = sum(BROOKLYN), total_month_Manhattan = sum(MANHATTAN), total_month_Queens = sum(QUEENS), total_month_Staten_Island = sum(STATEN_ISLAND)) %>%
+  add_column(day=1) %>%
+  mutate(date = make_date(year, month, day))
+```
+
+Transforming data to create a new data set which will have total shootings per month for all of New York City
+
+```{r, echo = TRUE}
+data3 <- data2 %>%
+  group_by(year, month) %>%
+  summarise(shootings = sum(total_month_Bronx, total_month_Brooklyn, total_month_Manhattan, total_month_Queens, total_month_Staten_Island)) %>%
+  add_column(day=1) %>%
+  mutate(date = make_date(year,month,day))
+```
+
+# Visualizations
+
+This first visualization shows the total number of shootings each month from 2006 to 2021
+```{r, echo = TRUE}
+data3 %>%
+  ggplot(aes(x=date, y = shootings)) +
+  geom_line(aes(color = "shootings")) +
+  theme(legend.position = NULL,
+        axis.text.x = element_text(angle = 90)) +
+  labs(title = "Total Number of Shootings by Month in New York City", y = 'Shootings Total')
+```
+
+```{r, echo = TRUE}
+shootings_per_year <- data3 %>%
+  group_by(year) %>%
+  summarise(shootings = sum(shootings)) %>%
+  add_column(day=1) %>%
+  add_column(month=1) %>%
+  mutate(date = make_date(year,month,day))
+```
+
+
+This visualization shows the total number of shootings each year from 2006 to 2021
+```{r, echo = TRUE}
+shootings_per_year %>%
+  ggplot(aes(x=date, y = shootings)) +
+  geom_line(aes(color = "shootings")) +
+  theme(legend.position = NULL,
+        axis.text.x = element_text(angle = 90)) +
+  labs(title = "Total Number of Shootings per Year in New York City", y = 'Shootings Total')
+  
+```
+
+# Analysis
+
+From the first graph, it was apparent that there were more shootings in certain parts of the years than others. An analysis showing how many shootings occur each month on average will show which times of the year have the most and the least shootings
+
+
+```{r, echo = TRUE}
+average_by_month <- data3 %>%
+  group_by(month) %>%
+  summarise(across(shootings, sum)) %>%
+  mutate(shootings/16) %>%
+  rename(average_shootings = 'shootings/16') %>%
+  rename(total_shootings = 'shootings')
+```
+
+```{r, echo = TRUE}
+average_by_month %>%
+  ggplot(aes(x=month, y = average_shootings)) +
+  geom_line(aes(color = "average shootings", group=1)) +
+  geom_point(aes(color = "average shootings"))
+  theme(legend.position = NULL,
+        axis.text.x = element_text(angle = 90)) +
+  labs(title = "Average Number of Shootings in New York City by Month", y = 'Average Shootings')
+```
+
+This graph shows that on average, shootings in New York city tend to start off on the lower end at the beginning of the year and except for February, they rise in frequency until they peak in July/August, and then decrease for the majority of the year afterwards.
+
+Another analysis below will rank the days for each borough that have the highest number of shootings. 
+
+```{r, echo = TRUE}
+main_data %>%
+  slice_max(MANHATTAN, n=3, with_ties = FALSE) %>%
+  select(Date, MANHATTAN)
+```
+```{r, echo = TRUE}
+main_data %>%
+  slice_max(BROOKLYN, n=3, with_ties = FALSE) %>%
+  select(Date, BROOKLYN)
+```
+```{r, echo = TRUE}
+main_data %>%
+  slice_max(BRONX, n=3, with_ties = FALSE) %>%
+  select(Date, BRONX)
+```
+```{r, echo = TRUE}
+main_data %>%
+  slice_max(QUEENS, n=3, with_ties = FALSE) %>%
+  select(Date, QUEENS)
+```
+```{r, echo = TRUE}
+main_data %>%
+  slice_max(STATEN_ISLAND, n=3, with_ties = FALSE) %>%
+  select(Date, STATEN_ISLAND)
+```
+
+When viewing the three days with the highest number of shootings for each borough, the days generally fall int the warmer months of the year but not always. More analysis would be needed to know what other factors could cause a specific day or time of the year to have more shootings than others.
+
+# Conclusion and Bias
+In conclusion, there is a measurable correlation between the time of year and number of shootings in New York City. Of course, correlation does not always indicate causation. It would be beneficial to see data from more years to see if this trend holds true based on older historical data. Also, more analysis is needed to determine the true cause in the uptick of shootings over the warmer months. A possible explanation is that people are simply outside for longer periods of time during the warmer months due to more tolerable temperatures, but it is possible that other factors are at play. There is likely more tourism and more people in the city overall in the summer months for the same reason. 
+
+It is important to consider my own biases in this analysis. First of all, I did not include any information on gender, age, or ethnicity. Though these factors could be used in a separate analysis, I did not want to include them because they had missing information and these three biases are difficult to fully ignore. I certainly have my own implicit biases for these factors but in choosing to not use them and purely look at numbers of shootings and dates, I have mitigated my bias.
+
+I also have my own bias in regards to guns and gun violence. I believe that gun violence is a touchy subject for most and to mitigate this bias, I again have chosen to stick to using numerical data only.
+
+```{r, echo = TRUE}
+sessionInfo
+```
